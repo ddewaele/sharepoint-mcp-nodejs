@@ -1,0 +1,10 @@
+services:
+  sharepoint-mcp:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - HTTP_PORT=3000
+    restart: unless-stopped
