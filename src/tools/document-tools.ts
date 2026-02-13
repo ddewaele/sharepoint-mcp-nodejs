@@ -11,6 +11,7 @@ import {
 import { getDefaultContext } from "./context.js";
 import { toolResult, handleToolError } from "./utils.js";
 import { extractContent } from "../extraction/index.js";
+import { markdownToDocx } from "../conversion/markdown-to-docx.js";
 
 export function registerDocumentTools(server: McpServer): void {
   server.tool(
@@ -109,6 +110,31 @@ export function registerDocumentTools(server: McpServer): void {
             : Buffer.from(content, "utf-8");
         const item = await updateDocument(graphClient, siteId, file_path, buffer);
         return toolResult(`Updated: ${item.name} (${item.size} bytes)`);
+      }),
+  );
+
+  server.tool(
+    "Create_Document_From_Markdown",
+    "Convert markdown or plain text to a .docx file and upload to SharePoint. Optionally apply styles from a template .docx already on SharePoint.",
+    {
+      content: z.string().describe("Markdown or plain text content to convert"),
+      folder_path: z.string().describe("Destination folder path in SharePoint"),
+      file_name: z.string().describe("Output file name (e.g. 'report.docx')"),
+      template_path: z.string().optional().describe("Optional SharePoint path to a .docx template for styling (e.g. 'Templates/corporate-style.docx')"),
+    },
+    async ({ content, folder_path, file_name, template_path }) =>
+      handleToolError(async () => {
+        const { graphClient, siteId } = getDefaultContext();
+
+        let templateBuffer: Buffer | undefined;
+        if (template_path) {
+          const { buffer } = await getDocumentContent(graphClient, siteId, template_path);
+          templateBuffer = buffer;
+        }
+
+        const docxBuffer = await markdownToDocx(content, templateBuffer);
+        const item = await uploadDocument(graphClient, siteId, folder_path, file_name, docxBuffer);
+        return toolResult(`Created: ${item.name} (${item.size} bytes) - ${item.webUrl}`);
       }),
   );
 
