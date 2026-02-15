@@ -4,11 +4,12 @@ A TypeScript MCP (Model Context Protocol) server for SharePoint file and folder 
 
 ## Features
 
-- **10 MCP tools** for complete SharePoint file/folder management
+- **11 MCP tools** for complete SharePoint file/folder management
 - **Two auth flows**: Client Credentials (app-level) and On-Behalf-Of (user-level)
 - **Two transports**: stdio (for Claude Desktop/CLI) and Streamable HTTP
 - **Resumable uploads** for large files (>4MB)
 - **Content extraction** from PDF, Word (.docx), Excel (.xlsx), and text files
+- **Markdown-to-DOCX conversion** via Pandoc with optional style templates from SharePoint
 
 ## Quick Start
 
@@ -79,10 +80,88 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 | `Get_SharePoint_Tree` | Recursive tree view (configurable depth) |
 | `List_SharePoint_Documents` | List documents with metadata |
 | `Get_Document_Content` | Download + extract text (PDF/Word/Excel/text) |
+| `Create_Document_From_Markdown` | Convert markdown/text to .docx with optional style template |
 | `Upload_Document` | Upload from base64 or text content |
 | `Upload_Document_From_Path` | Upload a local file (resumable for >4MB) |
 | `Update_Document` | Update existing document content |
 | `Delete_Document` | Delete a document |
+
+## Markdown to DOCX Conversion
+
+The `Create_Document_From_Markdown` tool converts markdown or plain text to a .docx file using [Pandoc](https://pandoc.org/) and uploads it to SharePoint.
+
+**Parameters:**
+- `content` (required) — Markdown or plain text to convert
+- `folder_path` (required) — Destination folder in SharePoint
+- `file_name` (required) — Output filename (e.g. `report.docx`)
+- `template_path` (optional) — Path to a .docx template on SharePoint for styling
+
+**Style templates:** Create a .docx file in Word with your desired styles (fonts, headings, margins, colors), upload it to SharePoint, then reference it as `template_path`. Pandoc applies styles from the template to the generated document via `--reference-doc`.
+
+### Testing the Markdown-to-DOCX Tool
+
+**Prerequisites:** Pandoc must be installed. In Docker this is handled automatically. For local development:
+
+```bash
+# macOS
+brew install pandoc
+
+# Ubuntu/Debian
+sudo apt-get install pandoc
+
+# Verify
+pandoc --version
+```
+
+**Test 1 — Basic conversion (no template):**
+
+Using MCP Inspector:
+```bash
+npx @modelcontextprotocol/inspector node dist/index.js
+```
+Call `Create_Document_From_Markdown` with:
+```json
+{
+  "content": "# My Report\n\n## Introduction\n\nThis is a **test** document with:\n\n- Bullet point 1\n- Bullet point 2\n\n## Data\n\n| Name | Value |\n|------|-------|\n| A    | 100   |\n| B    | 200   |",
+  "folder_path": "Shared Documents",
+  "file_name": "test-report.docx"
+}
+```
+
+Then verify with `Get_Document_Content`:
+```json
+{
+  "file_path": "Shared Documents/test-report.docx"
+}
+```
+
+**Test 2 — With style template:**
+
+1. Create a styled .docx template in Word (set fonts, heading styles, margins, colors)
+2. Upload it to SharePoint (e.g. via `Upload_Document_From_Path` or manually)
+3. Call `Create_Document_From_Markdown` with the template:
+```json
+{
+  "content": "# Styled Report\n\nThis document uses corporate styling.",
+  "folder_path": "Shared Documents",
+  "file_name": "styled-report.docx",
+  "template_path": "Templates/corporate-style.docx"
+}
+```
+
+**Test 3 — Via curl (HTTP transport):**
+```bash
+# Initialize session
+curl -s -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0.1.0"}}}'
+
+# Call the tool (use the mcp-session-id from the response headers above)
+curl -s -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -H "mcp-session-id: <SESSION_ID>" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Create_Document_From_Markdown","arguments":{"content":"# Hello World\n\nTest document.","folder_path":"Shared Documents","file_name":"curl-test.docx"}}}'
+```
 
 ## Upload Strategy
 

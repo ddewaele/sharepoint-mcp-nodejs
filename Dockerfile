@@ -11,6 +11,8 @@ RUN npm run build
 
 FROM node:22-alpine
 
+RUN apk add --no-cache pandoc
+
 WORKDIR /app
 
 COPY package.json package-lock.json ./
