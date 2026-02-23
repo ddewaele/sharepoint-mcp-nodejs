@@ -12,6 +12,7 @@ import { getDefaultContext } from "./context.js";
 import { toolResult, handleToolError } from "./utils.js";
 import { extractContent } from "../extraction/index.js";
 import { markdownToDocx } from "../conversion/markdown-to-docx.js";
+import { markdownToXlsx } from "../conversion/markdown-to-xlsx.js";
 
 export function registerDocumentTools(server: McpServer): void {
   server.tool(
@@ -134,6 +135,23 @@ export function registerDocumentTools(server: McpServer): void {
 
         const docxBuffer = await markdownToDocx(content, templateBuffer);
         const item = await uploadDocument(graphClient, siteId, folder_path, file_name, docxBuffer);
+        return toolResult(`Created: ${item.name} (${item.size} bytes) - ${item.webUrl}`);
+      }),
+  );
+
+  server.tool(
+    "Create_Spreadsheet_From_Markdown",
+    "Convert markdown tables to an .xlsx spreadsheet and upload to SharePoint. Each table in the markdown becomes a separate sheet. Tables must use standard markdown table syntax with | delimiters.",
+    {
+      content: z.string().describe("Markdown content containing one or more tables"),
+      folder_path: z.string().describe("Destination folder path in SharePoint"),
+      file_name: z.string().describe("Output file name (e.g. 'report.xlsx')"),
+    },
+    async ({ content, folder_path, file_name }) =>
+      handleToolError(async () => {
+        const { graphClient, siteId } = getDefaultContext();
+        const xlsxBuffer = await markdownToXlsx(content);
+        const item = await uploadDocument(graphClient, siteId, folder_path, file_name, xlsxBuffer);
         return toolResult(`Created: ${item.name} (${item.size} bytes) - ${item.webUrl}`);
       }),
   );
