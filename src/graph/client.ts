@@ -12,6 +12,8 @@ export class GraphClient {
   ): Promise<T> {
     const token = await this.auth.getAccessToken();
     const url = path.startsWith("http") ? path : `${GRAPH_BASE}${path}`;
+    const method = options.method ?? "GET";
+    console.error(`[graph] ${method} ${url}`);
 
     const response = await fetch(url, {
       ...options,
@@ -32,8 +34,11 @@ export class GraphClient {
       } catch {
         // ignore parse errors
       }
+      console.error(`[graph] ${method} ${url} -> ${response.status} ${graphCode ?? ""} ${message}`);
       throw new GraphApiError(message, response.status, graphCode);
     }
+
+    console.error(`[graph] ${method} ${url} -> ${response.status}`);
 
     if (response.status === 204) {
       return undefined as T;

@@ -21,7 +21,7 @@ export function registerDocumentTools(server: McpServer): void {
       folder_path: z.string().optional().describe("Folder path. Empty for root."),
     },
     async ({ folder_path }) =>
-      handleToolError(async () => {
+      handleToolError("List_SharePoint_Documents", async () => {
         const { graphClient, siteId } = getDefaultContext();
         const docs = await listDocuments(graphClient, siteId, folder_path);
         if (docs.length === 0) {
@@ -42,7 +42,7 @@ export function registerDocumentTools(server: McpServer): void {
       file_path: z.string().describe("Full path to the file (e.g. 'Documents/report.pdf')"),
     },
     async ({ file_path }) =>
-      handleToolError(async () => {
+      handleToolError("Get_Document_Content", async () => {
         const { graphClient, siteId } = getDefaultContext();
         const { buffer, item } = await getDocumentContent(graphClient, siteId, file_path);
         const text = await extractContent(buffer, item.name);
@@ -60,7 +60,7 @@ export function registerDocumentTools(server: McpServer): void {
       encoding: z.enum(["text", "base64"]).default("text").describe("Content encoding"),
     },
     async ({ folder_path, file_name, content, encoding }) =>
-      handleToolError(async () => {
+      handleToolError("Upload_Document", async () => {
         const { graphClient, siteId } = getDefaultContext();
         const buffer =
           encoding === "base64"
@@ -80,7 +80,7 @@ export function registerDocumentTools(server: McpServer): void {
       local_file_path: z.string().describe("Absolute path to local file"),
     },
     async ({ folder_path, file_name, local_file_path }) =>
-      handleToolError(async () => {
+      handleToolError("Upload_Document_From_Path", async () => {
         const { graphClient, siteId } = getDefaultContext();
         const item = await uploadDocumentFromPath(
           graphClient,
@@ -102,7 +102,7 @@ export function registerDocumentTools(server: McpServer): void {
       encoding: z.enum(["text", "base64"]).default("text").describe("Content encoding"),
     },
     async ({ file_path, content, encoding }) =>
-      handleToolError(async () => {
+      handleToolError("Update_Document", async () => {
         const { graphClient, siteId } = getDefaultContext();
         const buffer =
           encoding === "base64"
@@ -123,7 +123,7 @@ export function registerDocumentTools(server: McpServer): void {
       template_path: z.string().optional().describe("Optional SharePoint path to a .docx template for styling (e.g. 'Templates/corporate-style.docx')"),
     },
     async ({ content, folder_path, file_name, template_path }) =>
-      handleToolError(async () => {
+      handleToolError("Create_Document_From_Markdown", async () => {
         const { graphClient, siteId } = getDefaultContext();
 
         let templateBuffer: Buffer | undefined;
@@ -145,7 +145,7 @@ export function registerDocumentTools(server: McpServer): void {
       file_path: z.string().describe("Path to the file to delete"),
     },
     async ({ file_path }) =>
-      handleToolError(async () => {
+      handleToolError("Delete_Document", async () => {
         const { graphClient, siteId } = getDefaultContext();
         await deleteDocument(graphClient, siteId, file_path);
         return toolResult(`Deleted: ${file_path}`);

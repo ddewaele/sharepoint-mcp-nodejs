@@ -25,7 +25,7 @@ export function registerFolderTools(server: McpServer): void {
     "List folders in a SharePoint directory",
     { folder_path: z.string().optional().describe("Folder path (e.g. 'Documents/Reports'). Empty for root.") },
     async ({ folder_path }) =>
-      handleToolError(async () => {
+      handleToolError("List_SharePoint_Folders", async () => {
         const { graphClient, siteId } = getDefaultContext();
         const folders = await listFolders(graphClient, siteId, folder_path);
         if (folders.length === 0) {
@@ -46,7 +46,7 @@ export function registerFolderTools(server: McpServer): void {
       folder_name: z.string().describe("Name of the new folder"),
     },
     async ({ parent_path, folder_name }) =>
-      handleToolError(async () => {
+      handleToolError("Create_Folder", async () => {
         const { graphClient, siteId } = getDefaultContext();
         const item = await createFolder(graphClient, siteId, parent_path, folder_name);
         return toolResult(`Folder created: ${item.name} (${item.webUrl})`);
@@ -60,7 +60,7 @@ export function registerFolderTools(server: McpServer): void {
       folder_path: z.string().describe("Path of the folder to delete (e.g. 'Documents/OldFolder')"),
     },
     async ({ folder_path }) =>
-      handleToolError(async () => {
+      handleToolError("Delete_Folder", async () => {
         const { graphClient, siteId } = getDefaultContext();
         await deleteFolder(graphClient, siteId, folder_path);
         return toolResult(`Folder deleted: ${folder_path}`);
@@ -75,7 +75,7 @@ export function registerFolderTools(server: McpServer): void {
       max_depth: z.number().optional().default(3).describe("Maximum depth to traverse (default: 3)"),
     },
     async ({ folder_path, max_depth }) =>
-      handleToolError(async () => {
+      handleToolError("Get_SharePoint_Tree", async () => {
         const { graphClient, siteId } = getDefaultContext();
         const tree = await getFolderTree(graphClient, siteId, folder_path, max_depth);
         if (tree.length === 0) {
