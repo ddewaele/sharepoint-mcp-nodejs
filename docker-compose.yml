@@ -1,6 +1,7 @@
 services:
   sharepoint-mcp:
     build: .
+    image: sharepoint-mcp-nodejs:latest
     ports:
       - "3000:3000"
     env_file:
