@@ -8,6 +8,15 @@ import { resolveSiteId } from "../graph/sites.js";
 import { createServer } from "../server.js";
 import { setSessionContext, deleteSessionContext, STDIO_SESSION_KEY } from "../tools/index.js";
 
+// Sessions idle longer than this are eligible for cleanup
+const SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const SESSION_CLEANUP_INTERVAL_MS = 60 * 1000; // run every minute
+
+interface SessionEntry {
+  transport: StreamableHTTPServerTransport;
+  lastActivityAt: number;
+}
+
 export async function startHttpTransport(config: Config): Promise<void> {
   // For client_credentials, resolve the shared Graph context once at startup.
   let sharedGraphClient: GraphClient | undefined;
@@ -26,21 +35,48 @@ export async function startHttpTransport(config: Config): Promise<void> {
   const app = express();
   app.use(express.json());
 
-  // Track active transports by session ID
-  const transports = new Map<string, StreamableHTTPServerTransport>();
+  // Track active sessions: session ID → { transport, lastActivityAt }
+  const sessions = new Map<string, SessionEntry>();
+
+  function deleteSession(sessionId: string): void {
+    const entry = sessions.get(sessionId);
+    if (!entry) return;
+    sessions.delete(sessionId);
+    deleteSessionContext(sessionId);
+    entry.transport.close().catch(() => {});
+  }
+
+  // Periodically evict sessions that have been idle longer than SESSION_TTL_MS
+  const cleanupTimer = setInterval(() => {
+    const now = Date.now();
+    let evicted = 0;
+    for (const [id, entry] of sessions) {
+      if (now - entry.lastActivityAt > SESSION_TTL_MS) {
+        deleteSession(id);
+        evicted++;
+      }
+    }
+    if (evicted > 0 || sessions.size > 0) {
+      console.error(`[MCP] Session cleanup: evicted=${evicted} active=${sessions.size}`);
+    }
+  }, SESSION_CLEANUP_INTERVAL_MS);
+
+  // Don't let the cleanup timer prevent process exit
+  cleanupTimer.unref();
 
   app.all("/mcp", async (req, res) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
-    // If we have a session ID, route to the existing transport
-    if (sessionId && transports.has(sessionId)) {
-      const transport = transports.get(sessionId)!;
-      await transport.handleRequest(req, res, req.body);
+    // Route to existing session and refresh its activity timestamp
+    if (sessionId && sessions.has(sessionId)) {
+      const entry = sessions.get(sessionId)!;
+      entry.lastActivityAt = Date.now();
+      await entry.transport.handleRequest(req, res, req.body);
       return;
     }
 
-    // For non-initialization requests with an unknown session, reject
-    if (sessionId && !transports.has(sessionId)) {
+    // Reject requests for unknown sessions (client should reinitialise)
+    if (sessionId && !sessions.has(sessionId)) {
       res.status(404).json({
         jsonrpc: "2.0",
         error: { code: -32600, message: "Invalid Request: Session not found" },
@@ -50,7 +86,6 @@ export async function startHttpTransport(config: Config): Promise<void> {
     }
 
     // New session: create a fresh server + transport pair
-    // Generate the session ID upfront so we can register before handleRequest
     const newSessionId = randomUUID();
 
     const transport = new StreamableHTTPServerTransport({
@@ -60,10 +95,10 @@ export async function startHttpTransport(config: Config): Promise<void> {
     const server = createServer();
     await server.connect(transport);
 
-    // Register the transport immediately using the known session ID
-    transports.set(newSessionId, transport);
+    sessions.set(newSessionId, { transport, lastActivityAt: Date.now() });
+    console.error(`[MCP] New session: ${newSessionId} (total: ${sessions.size})`);
 
-    // Set up Graph context using the known session ID
+    // Set up Graph context
     if (config.authFlow === "on_behalf_of") {
       const authHeader = req.headers.authorization;
       if (authHeader?.startsWith("Bearer ")) {
@@ -79,7 +114,7 @@ export async function startHttpTransport(config: Config): Promise<void> {
           setSessionContext(newSessionId, { graphClient, siteId });
         } catch (err) {
           console.error("OBO auth setup failed:", err);
-          transports.delete(newSessionId);
+          deleteSession(newSessionId);
           res.status(401).json({ error: "Authentication failed" });
           return;
         }
@@ -89,20 +124,24 @@ export async function startHttpTransport(config: Config): Promise<void> {
         graphClient: sharedGraphClient,
         siteId: sharedSiteId,
       });
-      // Also store under the default key so getDefaultContext() works
       setSessionContext(STDIO_SESSION_KEY, {
         graphClient: sharedGraphClient,
         siteId: sharedSiteId,
       });
     }
 
-    // Clean up on close
+    // Clean up when transport explicitly closes (e.g. DELETE request)
     transport.onclose = () => {
-      transports.delete(newSessionId);
-      deleteSessionContext(newSessionId);
+      console.error(`[MCP] Session closed: ${newSessionId} (total: ${sessions.size - 1})`);
+      deleteSession(newSessionId);
     };
 
     await transport.handleRequest(req, res, req.body);
+  });
+
+  // Health check endpoint
+  app.get("/health", (_req, res) => {
+    res.json({ status: "ok", sessions: sessions.size });
   });
 
   const port = config.httpPort;
