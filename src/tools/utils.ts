@@ -15,17 +15,26 @@ export function errorResult(text: string): ToolResult {
 }
 
 export async function handleToolError(
+  toolName: string,
   fn: () => Promise<ToolResult>,
 ): Promise<ToolResult> {
+  console.error(`[tool] ${toolName} called`);
   try {
-    return await fn();
+    const result = await fn();
+    if (result.isError) {
+      console.error(`[tool] ${toolName} returned error: ${result.content[0]?.text}`);
+    } else {
+      console.error(`[tool] ${toolName} succeeded`);
+    }
+    return result;
   } catch (err) {
     if (err instanceof GraphApiError) {
-      return errorResult(
-        `Graph API error (${err.statusCode}): ${err.message}${err.graphCode ? ` [${err.graphCode}]` : ""}`,
-      );
+      const msg = `Graph API error (${err.statusCode}): ${err.message}${err.graphCode ? ` [${err.graphCode}]` : ""}`;
+      console.error(`[tool] ${toolName} failed: ${msg}`);
+      return errorResult(msg);
     }
     const message = err instanceof Error ? err.message : String(err);
+    console.error(`[tool] ${toolName} failed: ${message}`);
     return errorResult(`Error: ${message}`);
   }
 }
